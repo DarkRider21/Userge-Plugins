@@ -1,37 +1,30 @@
 import asyncio
 import math
 
-import heroku3
 import requests
 from userge import Config, Message, userge
 
-# ================= CONSTANT =================
-Heroku = heroku3.from_key(Config.HEROKU_API_KEY)
-heroku_api = "https://api.heroku.com"
-HEROKU_APP_NAME = Config.HEROKU_APP_NAME
-HEROKU_API_KEY = Config.HEROKU_API_KEY
-# ================= CONSTANT =================
 
-
-@userge.on_cmd(
-    "usage", about={"header": "Get Dyno hours usage"}
-)  # pylint:disable=E0602
+@userge.on_cmd("usage", about={"header": "Get Dyno hours usage"})
 async def usage(message: Message):
-    """ Get your account Dyno Usage """
+    """Get your account Dyno Usage"""
+    if not Config.HEROKU_APP:
+        await message.err("Heroku App Not Found !")
+        return
     await message.edit("`Processing...`")
     useragent = (
         "Mozilla/5.0 (Linux; Android 10; SM-G975F) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/80.0.3987.149 Mobile Safari/537.36"
     )
-    u_id = Heroku.account().id
+    u_id = Config.HEROKU_APP.owner.id
     headers = {
         "User-Agent": useragent,
-        "Authorization": f"Bearer {HEROKU_API_KEY}",
+        "Authorization": f"Bearer {Config.HEROKU_API_KEY}",
         "Accept": "application/vnd.heroku+json; version=3.account-quotas",
     }
     path = "/accounts/" + u_id + "/actions/get-quota"
-    r = requests.get(heroku_api + path, headers=headers)
+    r = requests.get("https://api.heroku.com" + path, headers=headers)
     if r.status_code != 200:
         return await message.edit(
             "`Error: something bad happened`\n\n" f">.`{r.reason}`\n"
@@ -40,14 +33,14 @@ async def usage(message: Message):
     quota = result["account_quota"]
     quota_used = result["quota_used"]
 
-    #  """ - Used - """
+    # Used
     remaining_quota = quota - quota_used
     percentage = math.floor(remaining_quota / quota * 100)
     minutes_remaining = remaining_quota / 60
     hours = math.floor(minutes_remaining / 60)
     minutes = math.floor(minutes_remaining % 60)
 
-    #  """ - Current - """
+    # Current
     App = result["apps"]
     try:
         App[0]["quota_used"]
@@ -64,7 +57,7 @@ async def usage(message: Message):
 
     await message.edit(
         "**Dyno Usage:**\n\n"
-        f" -> `Dyno usage for`  **{HEROKU_APP_NAME}**:\n"
+        f" -> `Dyno usage for`  **{Config.HEROKU_APP_NAME}**:\n"
         f"     •  `{AppHours}`**h**  `{AppMinutes}`**m**  "
         f"**|**  [`{AppPercentage}`**%**]"
         "\n"

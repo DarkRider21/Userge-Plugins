@@ -9,10 +9,11 @@ from userge.utils import progress
 
 @userge.on_cmd(
     "web ?(.+?|) (anonfiles|transfer|filebin|anonymousfiles"
-    "|megaupload|bayfiles|vshare|0x0|fileio)",
+    "|megaupload|bayfiles|vshare|0x0|fileio|ninja)",
     about={
         "header": "upload files to web",
-        "usage": "{tr}web [site name]",
+        "usage": "{tr}web [file path | reply to media] [site name]",
+        "examples": "{tr}web downloads/test.mp3 anonymousfiles",
         "types": [
             "anonfiles",
             "transfer",
@@ -23,6 +24,7 @@ from userge.utils import progress
             "vshare",
             "0x0",
             "fileio",
+            "ninja",
         ],
     },
 )
@@ -54,6 +56,7 @@ async def web(message: Message):
         "vshare": 'curl -F "file=@{}" https://api.vshare.is/upload',
         "0x0": 'curl -F "file=@{}" https://0x0.st',
         "fileio": 'curl -F "file =@{}" https://file.io',
+        "ninja": "curl -i -F file=@{} https://tmp.ninja/api.php?d=upload-tool",
     }
     cmd = hosts[selected_transfer].format(file_name)
     await message.edit(f"`now uploading to {selected_transfer} ...`")

@@ -1,20 +1,25 @@
 """ All Profile Settings for User """
 
-# by @Krishna_Singhal
 # del_pfp by Phyco-Ninja
+# rewrote poto by code-rgb
 
+import asyncio
 import os
 from datetime import datetime
 
 from pyrogram.errors import (
     AboutTooLong,
+    BadRequest,
+    FloodWait,
     UsernameNotOccupied,
     UsernameOccupied,
     VideoFileInvalid,
 )
+from pyrogram.types import InputMediaPhoto
 from userge import Config, Message, userge
 from userge.utils import progress
 
+CHANNEL = userge.getCLogger(__name__)
 PHOTO = Config.DOWN_PATH + "profile_pic.jpg"
 USER_DATA = {}
 
@@ -33,9 +38,9 @@ USER_DATA = {}
         "usage": "{tr}setname [flag] [name]\n" "{tr}setname [first name] | [last name]",
         "examples": [
             "{tr}setname -dlname",
-            "{tr}setname -fname krishna",
-            "{tr}setname -lname singhal",
-            "{tr}setname krishna | singhal",
+            "{tr}setname -fname Joe",
+            "{tr}setname -lname Mama",
+            "{tr}setname Joe | Mama",
             "{tr}setname -uname username",
             "{tr}setname -duname",
         ],
@@ -183,7 +188,6 @@ async def set_profile_picture(message: Message):
             "-flname": "Print full name",
             "-bio": "Print bio",
             "-uname": "Print username",
-            "-pp": "Upload profile picture",
         },
         "usage": "{tr}vpf [flags]\n{tr}vpf [flags] [reply to any user]",
         "note": "<b> -> Use 'me' after flags to print own profile</b>\n"
@@ -208,10 +212,14 @@ async def view_profile(message: Message):
         return
     if "me" in message.filtered_input_str:
         user = await message.client.get_me()
-        bio = await message.client.get_chat("me")
+        bio = (await message.client.get_chat("me")).bio
     else:
-        user = await message.client.get_users(input_)
-        bio = await message.client.get_chat(input_)
+        try:
+            user = await message.client.get_users(input_)
+            bio = (await message.client.get_chat(input_)).bio
+        except Exception:
+            await message.err("invalid user_id!")
+            return
     if "-fname" in message.flags:
         await message.edit("```checking, wait plox !...```", del_in=3)
         first_name = user.first_name
@@ -233,12 +241,11 @@ async def view_profile(message: Message):
             full_name = user.first_name + " " + user.last_name
             await message.edit("<code>{}</code>".format(full_name), parse_mode="html")
     elif "-bio" in message.flags:
-        if not bio.description:
+        if not bio:
             await message.err("User not have bio...")
         else:
-            await message.edit("```checking, wait plox !...```", del_in=3)
-            about = bio.description
-            await message.edit("<code>{}</code>".format(about), parse_mode="html")
+            await message.edit("`checking, wait plox !...`", del_in=3)
+            await message.edit("<code>{}</code>".format(bio), parse_mode="html")
     elif "-uname" in message.flags:
         if not user.username:
             await message.err("User not have username...")
@@ -246,15 +253,6 @@ async def view_profile(message: Message):
             await message.edit("```checking, wait plox !...```", del_in=3)
             username = user.username
             await message.edit("<code>{}</code>".format(username), parse_mode="html")
-    elif "-pp" in message.flags:
-        if not user.photo:
-            await message.err("profile photo not found!...")
-        else:
-            await message.edit("```checking pfp, wait plox !...```", del_in=3)
-            await message.client.download_media(user.photo.big_file_id, file_name=PHOTO)
-            await message.client.send_photo(message.chat.id, PHOTO)
-            if os.path.exists(PHOTO):
-                os.remove(PHOTO)
 
 
 @userge.on_cmd(
@@ -352,8 +350,10 @@ async def clone_(message: Message):
             await message.err("First Revert!...")
             return
         mychat = await userge.get_chat(me.id)
-        USER_DATA["bio"] = mychat.description or ""
-        await userge.update_profile(bio=chat.description or "")
+        USER_DATA["bio"] = mychat.bio or ""
+        await userge.update_profile(
+            bio=(chat.bio or "")[:69]
+        )  # 70 is the max bio limit
         await message.edit("```Bio is Successfully Cloned ...```", del_in=3)
     elif "-pp" in message.flags:
         if os.path.exists(PHOTO):
@@ -374,13 +374,13 @@ async def clone_(message: Message):
             {
                 "first_name": me.first_name or "",
                 "last_name": me.last_name or "",
-                "bio": mychat.description or "",
+                "bio": mychat.bio or "",
             }
         )
         await userge.update_profile(
             first_name=user.first_name or "",
             last_name=user.last_name or "",
-            bio=chat.description or "",
+            bio=(chat.bio or "")[:69],
         )
         if not user.photo:
             await message.edit(
@@ -411,3 +411,99 @@ async def revert_(message: Message):
         await userge.delete_profile_photos(photo.file_id)
         os.remove(PHOTO)
     await message.edit("```Profile is Successfully Reverted...```", del_in=3)
+
+
+async def chat_type_(message: Message, input_chat):
+    try:
+        chat_ = await message.client.get_chat(input_chat)
+    except (BadRequest, IndexError) as e:
+        return str(e), 0, 0
+    if not chat_.photo:
+        return f'No Photos Found for "{input_chat}"', 0, 0
+    return chat_.type, chat_.id, chat_.photo.big_file_id
+
+
+async def send_single(message: Message, peer_id, pos, reply_id):
+    pic_ = await message.client.get_profile_photos(peer_id, limit=min(pos, 100))
+    if len(pic_) != 0:
+        await message.client.send_photo(
+            message.chat.id, photo=pic_[-1].file_id, reply_to_message_id=reply_id
+        )
+
+
+# photo grabber
+@userge.on_cmd(
+    "poto",
+    about={
+        "header": "use this plugin to get photos of user or chat",
+        "description": "fetches upto 100 photos of a user or chat",
+        "flags": {"-l": "limit, max. 100", "-p": "for photo at particular postion"},
+        "examples": [
+            "{tr}poto",
+            "{tr}poto [reply to chat message]",
+            "{tr}poto @midnightmadwalk -p5\n    (i.e sends photo at position 5)",
+            "{tr}poto @midnightmadwalk -l5\n    (i.e sends an album of first 5 photos)",
+        ],
+    },
+)
+async def poto_x(message: Message):
+    chat_id = message.chat.id
+    reply = message.reply_to_message
+    reply_id = reply.message_id if reply else None
+    await message.edit("`Fetching photos ...`")
+    if reply:
+        input_ = reply.from_user.id
+    elif message.filtered_input_str:
+        input_ = message.filtered_input_str.strip()
+        if len(input_.split()) != 1:
+            await message.err("provide a valid ID or username", del_in=5)
+            return
+    else:
+        input_ = chat_id
+    type_, peer_id, f_id = await chat_type_(message, input_)
+    if peer_id == 0:
+        await message.err(type_, del_in=7)
+        return
+    if type_ in ("group", "supergroup", "channel") and message.client.is_bot:
+        photo_ = await userge.bot.download_media(f_id)
+        await userge.bot.send_photo(chat_id, photo_, reply_to_message_id=reply_id)
+        os.remove(photo_)
+        await message.delete()
+        return
+    flags_ = message.flags
+    if "-p" in flags_:
+        pos_ = flags_.get("-p", 0)
+        if not str(pos_).isdigit():
+            await message.err('"-p" Flag only takes integers', del_in=5)
+            return
+        await send_single(message, peer_id=peer_id, pos=int(pos_), reply_id=reply_id)
+    elif "-l" in flags_:
+        get_l = flags_.get("-l", 0)
+        if not str(get_l).isdigit():
+            await message.err('"-l" Flag only takes integers', del_in=5)
+            return
+        media, media_group = [], []
+        async for photo_ in message.client.iter_profile_photos(
+            peer_id, limit=min(int(get_l), 100)
+        ):
+            media.append(InputMediaPhoto(photo_.file_id))
+            if len(media) == 10:
+                media_group.append(media)
+                media = []
+        if len(media) != 0:
+            media_group.append(media)
+        if len(media_group) == 0:
+            # Happens if bot doesn't know the user
+            await message.delete()
+            return
+        try:
+            for poto_ in media_group:
+                await userge.send_media_group(chat_id, media=poto_)
+                await asyncio.sleep(2)
+        except FloodWait as e:
+            await asyncio.sleep(e.x + 3)
+        except Exception as err:
+            await CHANNEL.log(f"**ERROR:** `{str(err)}`")
+    else:
+        await send_single(message, peer_id=peer_id, pos=1, reply_id=reply_id)
+    await message.delete()

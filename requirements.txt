@@ -3,7 +3,7 @@ coffeehouse
 colour
 deezloader
 emoji-country-flag
-Google-Images-Search==1.3.0
+Google-Images-Search==1.3.5
 google
 glitch-this
 gtts
@@ -12,7 +12,7 @@ justwatch
 lottie
 qrcode
 spotdl
-tracemoepy
+tracemoepy==3.8
 validators
 geopy
 prettytable

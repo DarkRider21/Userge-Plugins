@@ -65,13 +65,13 @@ async def google_img(message: Message):
     for img in os.listdir(PATH):
         imgs = PATH + img
         image = Image.open(imgs)
-        if not (image.height <= 1280 and image.width <= 1280):
+        if image.height > 1280 or image.width > 1280:
             image.thumbnail((1280, 1280), Image.ANTIALIAS)
             a_dex = image.mode.find("A")
             if a_dex != -1:
                 new_im = Image.new("RGB", image.size, (255, 255, 255))
                 new_im.paste(image, mask=image.split()[a_dex])
-                new_im.save(imgs, "JPEG")
+                new_im.save(imgs, "JPEG", optimize=True)
         ss.append(InputMediaPhoto(str(imgs)))
         if len(ss) == 5:
             break
